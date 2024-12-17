@@ -1,0 +1,79 @@
+- name: Kubernetes Cluster Configuration
+  hosts: all
+  become: true
+  tasks:
+    # Pre-requisites: Install Helm
+    - name: Install Helm
+      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        executable: /bin/bash
+
+    # Install ArgoCD using Helm
+    - name: Add ArgoCD Helm repository
+      shell: helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
+
+    - name: Install ArgoCD
+      shell: helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace
+      args:
+        executable: /bin/bash
+
+    # Configure ArgoCD Applications
+    - name: Create ArgoCD Application manifest
+      copy:
+        dest: /tmp/argocd-application.yml
+        content: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: microservices-app
+            namespace: argocd
+          spec:
+            source:
+              repoURL: 'https://github.com/your-user/k8-manifests-repo.git'
+              targetRevision: HEAD
+              path: .
+            destination:
+              server: 'https://kubernetes.default.svc'
+              namespace: default
+            project: default
+
+    - name: Apply ArgoCD Application manifest
+      shell: kubectl apply -f /tmp/argocd-application.yml
+
+    # Install Logging Stack (ELK)
+    - name: Add ELK Helm repository
+      shell: helm repo add elastic https://helm.elastic.co && helm repo update
+
+    - name: Install Elasticsearch
+      shell: helm upgrade --install elasticsearch elastic/elasticsearch -n logging --create-namespace
+      args:
+        executable: /bin/bash
+
+    - name: Install Logstash
+      shell: helm upgrade --install logstash elastic/logstash -n logging --create-namespace
+      args:
+        executable: /bin/bash
+
+    - name: Install Kibana
+      shell: helm upgrade --install kibana elastic/kibana -n logging --create-namespace
+      args:
+        executable: /bin/bash
+
+    # Install Monitoring Stack (Kube-Prometheus)
+    - name: Add Prometheus Helm repository
+      shell: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts && helm repo update
+
+    - name: Install Kube-Prometheus Stack
+      shell: helm upgrade --install kube-prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
+      args:
+        executable: /bin/bash
+
+    # Verify Installation
+    - name: Verify ArgoCD pods are running
+      shell: kubectl get pods -n argocd
+
+    - name: Verify Logging stack pods are running
+      shell: kubectl get pods -n logging
+
+    - name: Verify Monitoring stack pods are running
+      shell: kubectl get pods -n monitoring
